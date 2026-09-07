@@ -1,29 +1,49 @@
-name: Build Android APK
+name: Build Snake EX APK
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout Snake EX and EKA2L1
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
 
-      - name: Check source files
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build tools
         run: |
-          echo "Repository contents:"
-          find . -maxdepth 3 -type f -not -path './.git/*' | sort
-          echo "The SIS package is preserved; an EKA2L1 Android source tree is required before an APK can be built."
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "cmake;3.22.1" "ndk;25.1.8937393"
 
-      - name: Prepare build notice
+      - name: Build EKA2L1 Android APK
+        working-directory: eka2l1/src/emu/android
         run: |
-          mkdir -p build-output
-          printf '%s\n' 'EKA2L1 Android source is not yet vendored in this repository.' > build-output/README.txt
-          printf '%s\n' 'No ROM/firmware is bundled. Add a legally obtained ROM at runtime.' >> build-output/README.txt
+          chmod +x gradlew
+          ./gradlew assembleRelease -PciArg='-DCI=ON' --no-daemon
 
-      - name: Upload build information
+      - name: Find APK
+        id: apk
+        run: |
+          APK=$(find eka2l1/src/emu/android/app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)
+          test -n "$APK"
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Snake EX APK
         uses: actions/upload-artifact@v4
         with:
-          name: snake-ex-build-info
-          path: build-output
+          name: Snake-EX-EKA2L1-APK
+          path: ${{ steps.apk.outputs.path }}
