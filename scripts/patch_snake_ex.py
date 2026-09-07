@@ -7,8 +7,7 @@ main = java_root / 'MainActivity.java'
 text = main.read_text()
 text = text.replace('import android.os.Bundle;\n', 'import android.os.Bundle;\nimport java.io.File;\nimport java.io.IOException;\n')
 
-# Do not stop on EKA2L1's first-run scoped-storage warning. The app is a dedicated
-# Snake EX launcher, so it initializes the emulator and starts the game directly.
+# Dedicated launcher: never show the stock storage warning or the app list.
 old_init = '''    private void initialize() {
         ActivityManager activityManager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
         ConfigurationInfo configurationInfo = activityManager.getDeviceConfigurationInfo();
@@ -54,7 +53,7 @@ old = '''    private void showAppList() {
 '''
 new = '''    private void showAppList() {
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
-        // Initialize native EKA2L1 on the Activity thread before JNI-backed work.
+        // Native EKA2L1 initialization must happen on the Activity thread.
         Emulator.initializeForShortcutLaunch(this);
         launchSnakeEx();
     }
@@ -73,6 +72,13 @@ new = '''    private void showAppList() {
                     int result = Emulator.installDevice("", romFile.getAbsolutePath(), false);
                     if (result != Emulator.INSTALL_DEVICE_ERROR_NONE) throw new IOException("Nokia 6600 ROM install failed: " + result);
                 }
+
+                // Always select the first installed Nokia 6600 device and pass its
+                // firmware code to EmulatorActivity. Stock shortcuts do this too;
+                // omitting it can leave the emulator with no current device.
+                String[] deviceCodes = Emulator.getDeviceFirmwareCodes();
+                if (deviceCodes.length == 0) throw new IOException("Nokia 6600 device was not created");
+                Emulator.setCurrentDevice(0, true);
 
                 long snakeUid = -1;
                 String snakeName = "Snake EX";
@@ -104,10 +110,12 @@ new = '''    private void showAppList() {
 
                 final long uid = snakeUid;
                 final String name = snakeName;
+                final String deviceCode = deviceCodes[0];
                 runOnUiThread(() -> {
                     Intent intent = new Intent(this, com.github.eka2l1.emu.EmulatorActivity.class);
                     intent.putExtra(com.github.eka2l1.emu.Constants.KEY_APP_UID, uid);
                     intent.putExtra(com.github.eka2l1.emu.Constants.KEY_APP_NAME, name);
+                    intent.putExtra(com.github.eka2l1.emu.Constants.KEY_DEVICE_CODE, deviceCode);
                     intent.putExtra(com.github.eka2l1.emu.Constants.KEY_APP_IS_SHORTCUT, true);
                     startActivity(intent);
                     finish();
@@ -137,8 +145,7 @@ new = '''    private void showAppList() {
 if old not in text: raise SystemExit('Expected showAppList block was not found')
 main.write_text(text.replace(old, new, 1))
 
-# The stock emulator opens ConfigActivity for a shortcut when no per-game profile
-# exists. For this dedicated app, use EKA2L1's default profile automatically.
+# Dedicated build: never open EKA2L1's configuration screen on first launch.
 emu_activity = emu_root / 'EmulatorActivity.java'
 et = emu_activity.read_text()
 old_profile = '''        if (externalIntent && (params = ProfilesManager.loadConfig(configDir)) == null) {
@@ -162,16 +169,14 @@ old_profile = '''        if (externalIntent && (params = ProfilesManager.loadCon
             params = ProfilesManager.loadConfigOrDefault(configDir, defProfile);
         }
 '''
-new_profile = '''        // Dedicated Snake EX build: never open the configuration screen on first launch.
-        // EKA2L1's default profile is sufficient to start the game immediately.
+new_profile = '''        // Dedicated Snake EX build: use EKA2L1's default profile immediately.
+        // Never open the configuration UI for the user.
         params = ProfilesManager.loadConfigOrDefault(configDir, defProfile);
 '''
 if old_profile not in et: raise SystemExit('Expected EmulatorActivity profile block was not found')
 emu_activity.write_text(et.replace(old_profile, new_profile, 1))
 
-# MainActivity uses a raw installed-app lookup. The upstream Emulator class
-# exposes the native getApps() only privately, so add a small public wrapper
-# during the build instead of modifying the EKA2L1 submodule permanently.
+# Public wrapper around the native installed-app lookup.
 emu = emu_root / 'Emulator.java'
 et = emu.read_text()
 marker = '    private static native String[] getApps();\n'
