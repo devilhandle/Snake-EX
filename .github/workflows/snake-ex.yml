@@ -1,0 +1,68 @@
+name: Build Snake EX APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository and EKA2L1
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build dependencies
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "cmake;3.22.1" "ndk;25.1.8937393"
+
+      - name: Embed Snake EX ROM and SIS into APK assets
+        run: |
+          set -e
+          ASSET_DIR=eka2l1/src/emu/android/app/src/main/assets/snakeex
+          mkdir -p "$ASSET_DIR"
+          cp "ROM-0x50000000-101FB3DD.dmp" "$ASSET_DIR/nokia6600.rom"
+          cp "Snake EX-2.sis" "$ASSET_DIR/Snake EX-2.sis"
+          test -s "$ASSET_DIR/nokia6600.rom"
+          test -s "$ASSET_DIR/Snake EX-2.sis"
+          python3 scripts/patch_snake_ex.py
+          grep -q 'subscribeInstallDevice' eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1/MainActivity.java
+          grep -q 'subscribeInstallApp' eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1/MainActivity.java
+          grep -q 'ACTION_LAUNCH_GAME' eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1/MainActivity.java
+
+      - name: Build debug APK
+        working-directory: eka2l1/src/emu/android
+        run: |
+          chmod +x gradlew
+          ./gradlew clean assembleDebug -PciArg='-DCI=ON' --no-daemon
+
+      - name: Verify APK contains Snake EX assets
+        run: |
+          APK=$(find eka2l1/src/emu/android/app/build/outputs/apk/debug -name '*.apk' -type f | head -n 1)
+          test -n "$APK"
+          unzip -l "$APK" | grep -q 'assets/snakeex/nokia6600.rom'
+          unzip -l "$APK" | grep -q 'assets/snakeex/Snake EX-2.sis'
+          mkdir -p artifact
+          cp "$APK" artifact/Snake-EX.apk
+          ls -lh artifact/Snake-EX.apk
+
+      - name: Upload Snake EX APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Snake-EX
+          path: artifact/Snake-EX.apk
+          if-no-files-found: error
