@@ -23,8 +23,6 @@ if strings.exists():
 if not java_root.exists():
     raise SystemExit(f'Missing EKA2L1 Java source root: {java_root}')
 
-# Replace only the launcher Activity. The emulator engine and EmulatorActivity
-# remain upstream, so native initialization is not reimplemented here.
 launcher = r'''package com.github.eka2l1;
 
 import android.content.Intent;
@@ -33,6 +31,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.github.eka2l1.applist.AppItem;
 import com.github.eka2l1.emu.Constants;
 import com.github.eka2l1.emu.Emulator;
+import com.github.eka2l1.emu.EmulatorActivity;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.schedulers.Schedulers;
 import java.io.File;
@@ -49,7 +48,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        // Do not render the normal EKA2L1 launcher UI.
+        // No normal EKA2L1 launcher UI: bootstrap the bundled game instead.
         Emulator.initializeForShortcutLaunch(this);
         bootstrapAndLaunch();
     }
@@ -66,6 +65,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        // Empty RPKG path is intentional: this Nokia 6600 ROM is usable without RPKG.
         Emulator.subscribeInstallDevice("", rom.getAbsolutePath(), false)
                 .subscribeOn(Schedulers.io())
                 .andThen(Emulator.subscribeInstallApp(sis.getAbsolutePath()))
@@ -75,8 +75,7 @@ public class MainActivity extends AppCompatActivity {
                     try { marker.createNewFile(); } catch (Exception ignored) { }
                     launchInstalledGame();
                 }, throwable -> {
-                    // If the device already exists, continue to the app list and
-                    // install/launch the SIS without exposing the emulator UI.
+                    // Device may already exist. Continue and inspect installed apps.
                     launchInstalledGame();
                 });
     }
@@ -94,16 +93,10 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }
                     if (found == null) {
-                        // Some SIS builds use a different title. Try the UID from
-                        // the installed SIS by selecting the first non-system app.
-                        for (AppItem item : items) {
-                            if (item.getUid() != 0) { found = item; break; }
-                        }
-                    }
-                    if (found == null) {
                         finish();
                         return;
                     }
+
                     Intent intent = new Intent(this, EmulatorActivity.class);
                     intent.putExtra(Constants.KEY_ACTION, Constants.ACTION_LAUNCH_GAME);
                     intent.putExtra(Constants.KEY_APP_UID, found.getUid());
@@ -132,4 +125,4 @@ public class MainActivity extends AppCompatActivity {
 }
 '''
 main_activity.write_text(launcher)
-print('Snake EX patch: ROM/SIS assets are installed through EKA2L1 APIs and Snake EX is launched directly.')
+print('Snake EX patch: bundled ROM/SIS are installed through EKA2L1 APIs and Snake EX launches directly.')
