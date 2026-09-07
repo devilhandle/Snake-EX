@@ -16,13 +16,15 @@ old = '''    private void showAppList() {
 '''
 new = '''    private void showAppList() {
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
+        // The native emulator must be initialized on the Activity thread before
+        // any background bootstrap work calls JNI-backed APIs.
+        Emulator.initializeForShortcutLaunch(this);
         launchSnakeEx();
     }
 
     private void launchSnakeEx() {
         new Thread(() -> {
             try {
-                Emulator.initializeForShortcutLaunch(this);
                 File gameDir = new File(getFilesDir(), "snakeex");
                 if (!gameDir.exists() && !gameDir.mkdirs()) throw new IOException("Cannot create game directory");
                 File romFile = new File(gameDir, "nokia6600.rom");
@@ -97,19 +99,6 @@ new = '''    private void showAppList() {
 '''
 if old not in text: raise SystemExit('Expected showAppList block was not found')
 main.write_text(text.replace(old, new, 1))
-
-emu = root / 'emu' / 'Emulator.java'
-et = emu.read_text()
-marker = '    private static native String[] getApps();\n'
-if 'getInstalledAppsRaw' not in et:
-    if marker not in et: raise SystemExit('Expected getApps native declaration was not found')
-    wrapper = '''    public static String[] getInstalledAppsRaw() {
-        checkInit();
-        return getApps();
-    }
-
-'''
-    emu.write_text(et.replace(marker, wrapper + marker, 1))
 
 gradle = Path('eka2l1/src/emu/android/app/build.gradle')
 g = gradle.read_text()
