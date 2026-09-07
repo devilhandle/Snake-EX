@@ -70,12 +70,11 @@ new = '''    private void showAppList() {
 
                 if (Emulator.getDevices().length == 0) {
                     int result = Emulator.installDevice("", romFile.getAbsolutePath(), false);
-                    if (result != Emulator.INSTALL_DEVICE_ERROR_NONE) throw new IOException("Nokia 6600 ROM install failed: " + result);
+                    if (result != Emulator.INSTALL_DEVICE_ERROR_NONE && result != Emulator.INSTALL_DEVICE_ERROR_ALREADY_EXIST) {
+                        throw new IOException("Nokia 6600 ROM install failed: " + result);
+                    }
                 }
 
-                // Always select the first installed Nokia 6600 device and pass its
-                // firmware code to EmulatorActivity. Stock shortcuts do this too;
-                // omitting it can leave the emulator with no current device.
                 String[] deviceCodes = Emulator.getDeviceFirmwareCodes();
                 if (deviceCodes.length == 0) throw new IOException("Nokia 6600 device was not created");
                 Emulator.setCurrentDevice(0, true);
@@ -85,7 +84,7 @@ new = '''    private void showAppList() {
                 String[] apps = Emulator.getInstalledAppsRaw();
                 for (int i = 0; i + 1 < apps.length; i += 2) {
                     String name = apps[i + 1];
-                    if (name != null && name.toLowerCase().contains("snake")) {
+                    if (name != null && name.toLowerCase(java.util.Locale.ROOT).contains("snake")) {
                         snakeUid = Long.parseLong(apps[i]);
                         snakeName = name;
                         break;
@@ -98,7 +97,7 @@ new = '''    private void showAppList() {
                     apps = Emulator.getInstalledAppsRaw();
                     for (int i = 0; i + 1 < apps.length; i += 2) {
                         String name = apps[i + 1];
-                        if (name != null && name.toLowerCase().contains("snake")) {
+                        if (name != null && name.toLowerCase(java.util.Locale.ROOT).contains("snake")) {
                             snakeUid = Long.parseLong(apps[i]);
                             snakeName = name;
                             break;
@@ -112,11 +111,15 @@ new = '''    private void showAppList() {
                 final String name = snakeName;
                 final String deviceCode = deviceCodes[0];
                 runOnUiThread(() -> {
-                    Intent intent = new Intent(this, com.github.eka2l1.emu.EmulatorActivity.class);
+                    // Match EKA2L1's normal app-list launch path. Do not mark this
+                    // as a shortcut: EmulatorActivity then uses its normal game
+                    // initialization path instead of reinitializing native state
+                    // before super.onCreate().
+                    Intent intent = new Intent(Intent.ACTION_DEFAULT, null, this,
+                            com.github.eka2l1.emu.EmulatorActivity.class);
                     intent.putExtra(com.github.eka2l1.emu.Constants.KEY_APP_UID, uid);
                     intent.putExtra(com.github.eka2l1.emu.Constants.KEY_APP_NAME, name);
                     intent.putExtra(com.github.eka2l1.emu.Constants.KEY_DEVICE_CODE, deviceCode);
-                    intent.putExtra(com.github.eka2l1.emu.Constants.KEY_APP_IS_SHORTCUT, true);
                     startActivity(intent);
                     finish();
                 });
