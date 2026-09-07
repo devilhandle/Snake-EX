@@ -1,7 +1,9 @@
 from pathlib import Path
 
-root = Path('eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1')
-main = root / 'MainActivity.java'
+# Java sources live under the emu package; MainActivity is in the parent package.
+java_root = Path('eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1')
+emu_root = java_root / 'emu'
+main = java_root / 'MainActivity.java'
 text = main.read_text()
 text = text.replace('import android.os.Bundle;\n', 'import android.os.Bundle;\nimport java.io.File;\nimport java.io.IOException;\n')
 
@@ -102,7 +104,7 @@ main.write_text(text.replace(old, new, 1))
 # MainActivity uses a raw installed-app lookup. The upstream Emulator class
 # exposes the native getApps() only privately, so add a small public wrapper
 # during the build instead of modifying the EKA2L1 submodule permanently.
-emu = root / 'Emulator.java'
+emu = emu_root / 'Emulator.java'
 et = emu.read_text()
 marker = '    private static native String[] getApps();\n'
 wrapper = '''    public static String[] getInstalledAppsRaw() {
