@@ -1,0 +1,29 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check source files
+        run: |
+          echo "Repository contents:"
+          find . -maxdepth 3 -type f -not -path './.git/*' | sort
+          echo "The SIS package is preserved; an EKA2L1 Android source tree is required before an APK can be built."
+
+      - name: Prepare build notice
+        run: |
+          mkdir -p build-output
+          printf '%s\n' 'EKA2L1 Android source is not yet vendored in this repository.' > build-output/README.txt
+          printf '%s\n' 'No ROM/firmware is bundled. Add a legally obtained ROM at runtime.' >> build-output/README.txt
+
+      - name: Upload build information
+        uses: actions/upload-artifact@v4
+        with:
+          name: snake-ex-build-info
+          path: build-output
