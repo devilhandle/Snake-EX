@@ -27,23 +27,50 @@ jobs:
 
       - name: Install Android build tools
         run: |
+          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "cmake;3.22.1" "ndk;25.1.8937393"
 
-      - name: Build EKA2L1 Android APK
+      - name: Prepare Snake EX firmware and game assets
+        run: |
+          mkdir -p eka2l1/src/emu/android/app/src/main/assets/snakeex
+          cp "ROM-0x50000000-101FB3DD.dmp" eka2l1/src/emu/android/app/src/main/assets/snakeex/nokia6600.rom
+          cp "Snake EX-2.sis" "eka2l1/src/emu/android/app/src/main/assets/snakeex/Snake EX-2.sis"
+          python3 scripts/patch_snake_ex.py
+          test -s eka2l1/src/emu/android/app/src/main/assets/snakeex/nokia6600.rom
+          test -s "eka2l1/src/emu/android/app/src/main/assets/snakeex/Snake EX-2.sis"
+
+      - name: Build Snake EX Android APK
         working-directory: eka2l1/src/emu/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease -PciArg='-DCI=ON' --no-daemon
+          ./gradlew clean assembleRelease -PciArg='-DCI=ON' --no-daemon
 
-      - name: Find APK
-        id: apk
+      - name: Sign and verify APK
         run: |
-          APK=$(find eka2l1/src/emu/android/app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)
-          test -n "$APK"
-          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          set -e
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/34.0.0"
+          UNSIGNED=$(find eka2l1/src/emu/android/app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)
+          test -n "$UNSIGNED"
+          keytool -genkeypair -v \
+            -keystore snakeex-release.jks \
+            -storepass snakeex123 \
+            -keypass snakeex123 \
+            -alias snakeex \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Snake EX, OU=Devilhandle, O=Devilhandle, L=Manisa, ST=Manisa, C=TR"
+          "$BUILD_TOOLS/zipalign" -p -f 4 "$UNSIGNED" Snake-EX-aligned.apk
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks snakeex-release.jks \
+            --ks-pass pass:snakeex123 \
+            --key-pass pass:snakeex123 \
+            --out Snake-EX.apk Snake-EX-aligned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose Snake-EX.apk
+          rm -f Snake-EX-aligned.apk snakeex-release.jks
+          ls -lh Snake-EX.apk
 
-      - name: Upload Snake EX APK
+      - name: Upload final Snake EX APK
         uses: actions/upload-artifact@v4
         with:
-          name: Snake-EX-EKA2L1-APK
-          path: ${{ steps.apk.outputs.path }}
+          name: Snake-EX
+          path: Snake-EX.apk
+          if-no-files-found: error
