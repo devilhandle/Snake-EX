@@ -14,7 +14,6 @@ old = '''    private void showAppList() {
                 .replace(R.id.container, appsListFragment).commitNowAllowingStateLoss();
     }
 '''
-
 new = '''    private void showAppList() {
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
         launchSnakeEx();
@@ -25,29 +24,24 @@ new = '''    private void showAppList() {
             try {
                 Emulator.initializeForShortcutLaunch(this);
                 File gameDir = new File(getFilesDir(), "snakeex");
-                if (!gameDir.exists() && !gameDir.mkdirs()) {
-                    throw new IOException("Cannot create game directory");
-                }
+                if (!gameDir.exists() && !gameDir.mkdirs()) throw new IOException("Cannot create game directory");
                 File romFile = new File(gameDir, "nokia6600.rom");
                 File sisFile = new File(gameDir, "Snake EX-2.sis");
                 copyAssetIfNeeded("snakeex/nokia6600.rom", romFile);
                 copyAssetIfNeeded("snakeex/Snake EX-2.sis", sisFile);
 
-                String[] devices = Emulator.getDevices();
-                if (devices.length == 0) {
+                if (Emulator.getDevices().length == 0) {
                     int result = Emulator.installDevice("", romFile.getAbsolutePath(), false);
-                    if (result != Emulator.INSTALL_DEVICE_ERROR_NONE) {
-                        throw new IOException("Nokia 6600 ROM install failed: " + result);
-                    }
+                    if (result != Emulator.INSTALL_DEVICE_ERROR_NONE) throw new IOException("Nokia 6600 ROM install failed: " + result);
                 }
 
                 long snakeUid = -1;
                 String snakeName = "Snake EX";
-                java.util.ArrayList<com.github.eka2l1.applist.AppItem> apps = Emulator.getAppsList().blockingGet();
-                for (com.github.eka2l1.applist.AppItem app : apps) {
-                    String name = app.getTitle();
+                String[] apps = Emulator.getInstalledAppsRaw();
+                for (int i = 0; i + 1 < apps.length; i += 2) {
+                    String name = apps[i + 1];
                     if (name != null && name.toLowerCase().contains("snake")) {
-                        snakeUid = app.getUid();
+                        snakeUid = Long.parseLong(apps[i]);
                         snakeName = name;
                         break;
                     }
@@ -55,23 +49,19 @@ new = '''    private void showAppList() {
 
                 if (snakeUid < 0) {
                     int result = Emulator.installApp(sisFile.getAbsolutePath());
-                    if (result != 0) {
-                        throw new IOException("Snake EX SIS install failed: " + result);
-                    }
-                    apps = Emulator.getAppsList().blockingGet();
-                    for (com.github.eka2l1.applist.AppItem app : apps) {
-                        String name = app.getTitle();
+                    if (result != 0) throw new IOException("Snake EX SIS install failed: " + result);
+                    apps = Emulator.getInstalledAppsRaw();
+                    for (int i = 0; i + 1 < apps.length; i += 2) {
+                        String name = apps[i + 1];
                         if (name != null && name.toLowerCase().contains("snake")) {
-                            snakeUid = app.getUid();
+                            snakeUid = Long.parseLong(apps[i]);
                             snakeName = name;
                             break;
                         }
                     }
                 }
 
-                if (snakeUid < 0) {
-                    throw new IOException("Snake EX application UID was not found after installation");
-                }
+                if (snakeUid < 0) throw new IOException("Snake EX application UID was not found after installation");
 
                 final long uid = snakeUid;
                 final String name = snakeName;
@@ -105,10 +95,21 @@ new = '''    private void showAppList() {
         }
     }
 '''
-
-if old not in text:
-    raise SystemExit('Expected showAppList block was not found')
+if old not in text: raise SystemExit('Expected showAppList block was not found')
 main.write_text(text.replace(old, new, 1))
+
+emu = root / 'emu' / 'Emulator.java'
+et = emu.read_text()
+marker = '    private static native String[] getApps();\n'
+if 'getInstalledAppsRaw' not in et:
+    if marker not in et: raise SystemExit('Expected getApps native declaration was not found')
+    wrapper = '''    public static String[] getInstalledAppsRaw() {
+        checkInit();
+        return getApps();
+    }
+
+'''
+    emu.write_text(et.replace(marker, wrapper + marker, 1))
 
 gradle = Path('eka2l1/src/emu/android/app/build.gradle')
 g = gradle.read_text()
