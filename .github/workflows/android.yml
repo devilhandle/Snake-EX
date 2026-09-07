@@ -36,6 +36,24 @@ jobs:
           cp "ROM-0x50000000-101FB3DD.dmp" eka2l1/src/emu/android/app/src/main/assets/snakeex/nokia6600.rom
           cp "Snake EX-2.sis" "eka2l1/src/emu/android/app/src/main/assets/snakeex/Snake EX-2.sis"
           python3 scripts/patch_snake_ex.py
+
+          # Critical: initialize native EKA2L1 before installDevice/installApp.
+          # The upstream shortcut bootstrap performs initializePath(),
+          # initializeFolders(), and checkInit(). The previous custom launcher
+          # only called initializeFolders(), so the first native install call
+          # could enter the JNI layer before startNative() and crash Android.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1/MainActivity.java")
+          s = p.read_text()
+          old = "Emulator.initializeFolders();\n        setVolumeControlStream(AudioManager.STREAM_MUSIC);\n        launchSnakeEx();"
+          new = "Emulator.initializeForShortcutLaunch(this);\n        setVolumeControlStream(AudioManager.STREAM_MUSIC);\n        launchSnakeEx();"
+          if old not in s:
+              raise SystemExit("Expected launcher bootstrap was not found")
+          p.write_text(s.replace(old, new, 1))
+          PY
+
+          grep -q "Emulator.initializeForShortcutLaunch(this);" eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1/MainActivity.java
           test -s eka2l1/src/emu/android/app/src/main/assets/snakeex/nokia6600.rom
           test -s "eka2l1/src/emu/android/app/src/main/assets/snakeex/Snake EX-2.sis"
 
