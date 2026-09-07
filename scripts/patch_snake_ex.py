@@ -52,9 +52,11 @@ old = '''    private void showAppList() {
     }
 '''
 new = '''    private void showAppList() {
+        // Keep the exact normal EKA2L1 bootstrap order: initializePath() already
+        // ran in onCreate(), so initializeFolders() must run before any native
+        // device/app operation. Do not call initializeForShortcutLaunch() here.
+        Emulator.initializeFolders();
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
-        // Native EKA2L1 initialization must happen on the Activity thread.
-        Emulator.initializeForShortcutLaunch(this);
         launchSnakeEx();
     }
 
@@ -111,12 +113,12 @@ new = '''    private void showAppList() {
                 final String name = snakeName;
                 final String deviceCode = deviceCodes[0];
                 runOnUiThread(() -> {
-                    // Match EKA2L1's normal app-list launch path. Do not mark this
-                    // as a shortcut: EmulatorActivity then uses its normal game
-                    // initialization path instead of reinitializing native state
-                    // before super.onCreate().
-                    Intent intent = new Intent(Intent.ACTION_DEFAULT, null, this,
-                            com.github.eka2l1.emu.EmulatorActivity.class);
+                    // Use EKA2L1's real ACTION_LAUNCH_GAME path. This is the same
+                    // path used when a game is selected from the normal app list;
+                    // EmulatorActivity will initialize the shortcut/native state
+                    // itself before creating the game surface.
+                    Intent intent = new Intent(this, com.github.eka2l1.emu.EmulatorActivity.class);
+                    intent.setAction(com.github.eka2l1.emu.Constants.ACTION_LAUNCH_GAME);
                     intent.putExtra(com.github.eka2l1.emu.Constants.KEY_APP_UID, uid);
                     intent.putExtra(com.github.eka2l1.emu.Constants.KEY_APP_NAME, name);
                     intent.putExtra(com.github.eka2l1.emu.Constants.KEY_DEVICE_CODE, deviceCode);
