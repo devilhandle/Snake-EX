@@ -41,8 +41,11 @@ jobs:
           test -s "$ASSET_DIR/nokia6600.rom"
           test -s "$ASSET_DIR/Snake EX-2.sis"
           python3 scripts/patch_snake_ex.py
+          python3 scripts/patch_native_bootstrap.py
           test -f eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1/MainActivity.java
           grep -q 'getInstalledAppsRaw' eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1/emu/Emulator.java
+          grep -q 'copyBundledRomForNativeBootstrap' eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1/MainActivity.java
+          grep -q 'bundled_nokia6600.dmp' eka2l1/src/emu/android/app/src/main/cpp/src/thread.cpp
           grep -q 'ACTION_LAUNCH_GAME' eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1/MainActivity.java
 
       - name: Build debug APK
