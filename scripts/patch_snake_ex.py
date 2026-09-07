@@ -7,6 +7,42 @@ main = java_root / 'MainActivity.java'
 text = main.read_text()
 text = text.replace('import android.os.Bundle;\n', 'import android.os.Bundle;\nimport java.io.File;\nimport java.io.IOException;\n')
 
+# Do not stop on EKA2L1's first-run scoped-storage warning. The app is a dedicated
+# Snake EX launcher, so it initializes the emulator and starts the game directly.
+old_init = '''    private void initialize() {
+        ActivityManager activityManager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        ConfigurationInfo configurationInfo = activityManager.getDeviceConfigurationInfo();
+        if (configurationInfo.reqGlEsVersion < 0x30000) {
+            showOpenGLDialog();
+            return;
+        }
+
+        AppDataStore dataStore = AppDataStore.getAndroidStore();
+        boolean warningShown = dataStore.getBoolean(PREF_STORAGE_WARNING_SHOWN, false);
+        if (!FileUtils.isExternalStorageLegacy() && !warningShown) {
+            showScopedStorageDialog();
+            dataStore.putBoolean(PREF_STORAGE_WARNING_SHOWN, true);
+            dataStore.save();
+            return;
+        }
+
+        showAppList();
+    }
+'''
+new_init = '''    private void initialize() {
+        ActivityManager activityManager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        ConfigurationInfo configurationInfo = activityManager.getDeviceConfigurationInfo();
+        if (configurationInfo.reqGlEsVersion < 0x30000) {
+            showOpenGLDialog();
+            return;
+        }
+
+        showAppList();
+    }
+'''
+if old_init not in text: raise SystemExit('Expected initialize block was not found')
+text = text.replace(old_init, new_init, 1)
+
 old = '''    private void showAppList() {
         Emulator.initializeFolders();
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
@@ -100,6 +136,38 @@ new = '''    private void showAppList() {
 '''
 if old not in text: raise SystemExit('Expected showAppList block was not found')
 main.write_text(text.replace(old, new, 1))
+
+# The stock emulator opens ConfigActivity for a shortcut when no per-game profile
+# exists. For this dedicated app, use EKA2L1's default profile automatically.
+emu_activity = emu_root / 'EmulatorActivity.java'
+et = emu_activity.read_text()
+old_profile = '''        if (externalIntent && (params = ProfilesManager.loadConfig(configDir)) == null) {
+            Intent configIntent = new Intent(this, ConfigActivity.class);
+            Bundle extras;
+            if (launchFromFile) {
+                extras = new Bundle();
+
+                extras.putLong(KEY_APP_UID, uid);
+                extras.putString(KEY_APP_NAME, name);
+                extras.putString(KEY_DEVICE_CODE, deviceCode);
+            } else {
+                extras = Objects.requireNonNull(intent.getExtras());
+            }
+            extras.putString(KEY_ACTION, ACTION_EDIT);
+            configIntent.putExtras(extras);
+            startActivity(configIntent);
+            finish();
+            return;
+        } else {
+            params = ProfilesManager.loadConfigOrDefault(configDir, defProfile);
+        }
+'''
+new_profile = '''        // Dedicated Snake EX build: never open the configuration screen on first launch.
+        // EKA2L1's default profile is sufficient to start the game immediately.
+        params = ProfilesManager.loadConfigOrDefault(configDir, defProfile);
+'''
+if old_profile not in et: raise SystemExit('Expected EmulatorActivity profile block was not found')
+emu_activity.write_text(et.replace(old_profile, new_profile, 1))
 
 # MainActivity uses a raw installed-app lookup. The upstream Emulator class
 # exposes the native getApps() only privately, so add a small public wrapper
