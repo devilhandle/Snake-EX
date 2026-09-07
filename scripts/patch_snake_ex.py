@@ -3,6 +3,7 @@ from pathlib import Path
 root = Path('eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1')
 main = root / 'MainActivity.java'
 text = main.read_text()
+text = text.replace('import android.os.Bundle;\n', 'import android.os.Bundle;\nimport java.io.File;\nimport java.io.IOException;\n')
 
 old = '''    private void showAppList() {
         Emulator.initializeFolders();
@@ -23,12 +24,10 @@ new = '''    private void showAppList() {
         new Thread(() -> {
             try {
                 Emulator.initializeForShortcutLaunch(this);
-
                 File gameDir = new File(getFilesDir(), "snakeex");
                 if (!gameDir.exists() && !gameDir.mkdirs()) {
                     throw new IOException("Cannot create game directory");
                 }
-
                 File romFile = new File(gameDir, "nokia6600.rom");
                 File sisFile = new File(gameDir, "Snake EX-2.sis");
                 copyAssetIfNeeded("snakeex/nokia6600.rom", romFile);
@@ -42,14 +41,13 @@ new = '''    private void showAppList() {
                     }
                 }
 
-                String[] apps = Emulator.getApps();
                 long snakeUid = -1;
                 String snakeName = "Snake EX";
-                for (int i = 0; i + 1 < apps.length; i += 2) {
-                    long uid = Long.parseLong(apps[i]);
-                    String name = apps[i + 1];
+                java.util.ArrayList<com.github.eka2l1.applist.AppItem> apps = Emulator.getAppsList().blockingGet();
+                for (com.github.eka2l1.applist.AppItem app : apps) {
+                    String name = app.getTitle();
                     if (name != null && name.toLowerCase().contains("snake")) {
-                        snakeUid = uid;
+                        snakeUid = app.getUid();
                         snakeName = name;
                         break;
                     }
@@ -60,13 +58,11 @@ new = '''    private void showAppList() {
                     if (result != 0) {
                         throw new IOException("Snake EX SIS install failed: " + result);
                     }
-
-                    apps = Emulator.getApps();
-                    for (int i = 0; i + 1 < apps.length; i += 2) {
-                        long uid = Long.parseLong(apps[i]);
-                        String name = apps[i + 1];
+                    apps = Emulator.getAppsList().blockingGet();
+                    for (com.github.eka2l1.applist.AppItem app : apps) {
+                        String name = app.getTitle();
                         if (name != null && name.toLowerCase().contains("snake")) {
-                            snakeUid = uid;
+                            snakeUid = app.getUid();
                             snakeName = name;
                             break;
                         }
@@ -74,7 +70,7 @@ new = '''    private void showAppList() {
                 }
 
                 if (snakeUid < 0) {
-                    throw new IOException("Snake EX was installed but its application UID was not found");
+                    throw new IOException("Snake EX application UID was not found after installation");
                 }
 
                 final long uid = snakeUid;
@@ -89,29 +85,23 @@ new = '''    private void showAppList() {
                 });
             } catch (Exception e) {
                 e.printStackTrace();
-                runOnUiThread(() -> {
-                    new AlertDialog.Builder(this)
-                            .setTitle("Snake EX")
-                            .setMessage("Oyun başlatılamadı: " + e.getMessage())
-                            .setCancelable(false)
-                            .setPositiveButton(android.R.string.ok, (d, w) -> finish())
-                            .show();
-                });
+                runOnUiThread(() -> new AlertDialog.Builder(this)
+                        .setTitle("Snake EX")
+                        .setMessage("Oyun başlatılamadı: " + e.getMessage())
+                        .setCancelable(false)
+                        .setPositiveButton(android.R.string.ok, (d, w) -> finish())
+                        .show());
             }
         }, "snake-ex-bootstrap").start();
     }
 
     private void copyAssetIfNeeded(String assetPath, File destination) throws IOException {
-        if (destination.exists() && destination.length() > 0) {
-            return;
-        }
+        if (destination.exists() && destination.length() > 0) return;
         try (java.io.InputStream in = getAssets().open(assetPath);
              java.io.FileOutputStream out = new java.io.FileOutputStream(destination)) {
             byte[] buffer = new byte[1024 * 1024];
             int read;
-            while ((read = in.read(buffer)) != -1) {
-                out.write(buffer, 0, read);
-            }
+            while ((read = in.read(buffer)) != -1) out.write(buffer, 0, read);
         }
     }
 '''
@@ -120,20 +110,14 @@ if old not in text:
     raise SystemExit('Expected showAppList block was not found')
 main.write_text(text.replace(old, new, 1))
 
-# Make the Android package uniquely Snake EX focused.
 gradle = Path('eka2l1/src/emu/android/app/build.gradle')
 g = gradle.read_text()
 g = g.replace('applicationId "com.github.eka2l1"', 'applicationId "com.devilhandle.snakeex"')
 g = g.replace('minifyEnabled true', 'minifyEnabled false')
 gradle.write_text(g)
 
-# Change the visible application name.
-for candidate in [
-    Path('eka2l1/src/emu/android/app/src/main/res/values/strings.xml'),
-    Path('eka2l1/src/emu/android/app/src/main/res/values/strings.xml')
-]:
-    if candidate.exists():
-        s = candidate.read_text()
-        s = s.replace('<string name="app_name">EKA2L1</string>', '<string name="app_name">Snake EX</string>')
-        candidate.write_text(s)
-        break
+strings = Path('eka2l1/src/emu/android/app/src/main/res/values/strings.xml')
+if strings.exists():
+    s = strings.read_text()
+    s = s.replace('<string name="app_name" translatable="false">EKA2L1</string>', '<string name="app_name" translatable="false">Snake EX</string>')
+    strings.write_text(s)
