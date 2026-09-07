@@ -30,32 +30,17 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "cmake;3.22.1" "ndk;25.1.8937393"
 
-      - name: Prepare Snake EX firmware and game assets
+      - name: Prepare Snake EX assets without changing emulator bootstrap
         run: |
           mkdir -p eka2l1/src/emu/android/app/src/main/assets/snakeex
           cp "ROM-0x50000000-101FB3DD.dmp" eka2l1/src/emu/android/app/src/main/assets/snakeex/nokia6600.rom
           cp "Snake EX-2.sis" "eka2l1/src/emu/android/app/src/main/assets/snakeex/Snake EX-2.sis"
           python3 scripts/patch_snake_ex.py
-
-          # Critical: initialize native EKA2L1 before installDevice/installApp.
-          # The upstream shortcut bootstrap performs initializePath(),
-          # initializeFolders(), and checkInit(). The previous custom launcher
-          # only called initializeFolders(), so the first native install call
-          # could enter the JNI layer before startNative() and crash Android.
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1/MainActivity.java")
-          s = p.read_text()
-          old = "Emulator.initializeFolders();\n        setVolumeControlStream(AudioManager.STREAM_MUSIC);\n        launchSnakeEx();"
-          new = "Emulator.initializeForShortcutLaunch(this);\n        setVolumeControlStream(AudioManager.STREAM_MUSIC);\n        launchSnakeEx();"
-          if old not in s:
-              raise SystemExit("Expected launcher bootstrap was not found")
-          p.write_text(s.replace(old, new, 1))
-          PY
-
-          grep -q "Emulator.initializeForShortcutLaunch(this);" eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1/MainActivity.java
           test -s eka2l1/src/emu/android/app/src/main/assets/snakeex/nokia6600.rom
           test -s "eka2l1/src/emu/android/app/src/main/assets/snakeex/Snake EX-2.sis"
+          # Guard against the previous crash-prone custom launcher patches.
+          ! grep -q "launchSnakeEx" eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1/MainActivity.java
+          ! grep -q "initializeForShortcutLaunch(this)" eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1/MainActivity.java
 
       - name: Build Snake EX Android APK
         working-directory: eka2l1/src/emu/android
@@ -69,19 +54,9 @@ jobs:
           BUILD_TOOLS="$ANDROID_HOME/build-tools/34.0.0"
           UNSIGNED=$(find eka2l1/src/emu/android/app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)
           test -n "$UNSIGNED"
-          keytool -genkeypair -v \
-            -keystore snakeex-release.jks \
-            -storepass snakeex123 \
-            -keypass snakeex123 \
-            -alias snakeex \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Snake EX, OU=Devilhandle, O=Devilhandle, L=Manisa, ST=Manisa, C=TR"
+          keytool -genkeypair -v -keystore snakeex-release.jks -storepass snakeex123 -keypass snakeex123 -alias snakeex -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Snake EX, OU=Devilhandle, O=Devilhandle, L=Manisa, ST=Manisa, C=TR"
           "$BUILD_TOOLS/zipalign" -p -f 4 "$UNSIGNED" Snake-EX-aligned.apk
-          "$BUILD_TOOLS/apksigner" sign \
-            --ks snakeex-release.jks \
-            --ks-pass pass:snakeex123 \
-            --key-pass pass:snakeex123 \
-            --out Snake-EX.apk Snake-EX-aligned.apk
+          "$BUILD_TOOLS/apksigner" sign --ks snakeex-release.jks --ks-pass pass:snakeex123 --key-pass pass:snakeex123 --out Snake-EX.apk Snake-EX-aligned.apk
           "$BUILD_TOOLS/apksigner" verify --verbose Snake-EX.apk
           rm -f Snake-EX-aligned.apk snakeex-release.jks
           ls -lh Snake-EX.apk
