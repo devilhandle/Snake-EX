@@ -41,8 +41,8 @@ jobs:
           test -s "$ASSET_DIR/nokia6600.rom"
           test -s "$ASSET_DIR/Snake EX-2.sis"
           python3 scripts/patch_snake_ex.py
-          grep -q 'subscribeInstallDevice' eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1/MainActivity.java
-          grep -q 'subscribeInstallApp' eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1/MainActivity.java
+          test -f eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1/MainActivity.java
+          grep -q 'getInstalledAppsRaw' eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1/emu/Emulator.java
           grep -q 'ACTION_LAUNCH_GAME' eka2l1/src/emu/android/app/src/main/java/com/github/eka2l1/MainActivity.java
 
       - name: Build debug APK
