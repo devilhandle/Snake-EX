@@ -16,8 +16,7 @@ old = '''    private void showAppList() {
 '''
 new = '''    private void showAppList() {
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
-        // The native emulator must be initialized on the Activity thread before
-        // any background bootstrap work calls JNI-backed APIs.
+        // Initialize native EKA2L1 on the Activity thread before JNI-backed work.
         Emulator.initializeForShortcutLaunch(this);
         launchSnakeEx();
     }
@@ -99,6 +98,22 @@ new = '''    private void showAppList() {
 '''
 if old not in text: raise SystemExit('Expected showAppList block was not found')
 main.write_text(text.replace(old, new, 1))
+
+# MainActivity uses a raw installed-app lookup. The upstream Emulator class
+# exposes the native getApps() only privately, so add a small public wrapper
+# during the build instead of modifying the EKA2L1 submodule permanently.
+emu = root / 'Emulator.java'
+et = emu.read_text()
+marker = '    private static native String[] getApps();\n'
+wrapper = '''    public static String[] getInstalledAppsRaw() {
+        checkInit();
+        return getApps();
+    }
+
+'''
+if 'getInstalledAppsRaw()' not in et:
+    if marker not in et: raise SystemExit('Expected Emulator.getApps native declaration was not found')
+    emu.write_text(et.replace(marker, wrapper + marker, 1))
 
 gradle = Path('eka2l1/src/emu/android/app/build.gradle')
 g = gradle.read_text()
